@@ -1,12 +1,12 @@
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const app = express();
-const port = process.env.PORT || 3000;
+const port = 3000;
 
-// Connect to SQLite database (file-based)
+// Create or connect to SQLite database
 const db = new sqlite3.Database("clicks.db");
 
-// Create table if it doesn't exist
+// Create a table if it doesn't exist
 db.run(`
   CREATE TABLE IF NOT EXISTS clicks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,15 +17,36 @@ db.run(`
   )
 `);
 
-// Define custom short links here
+// Slug redirect map
 const redirects = {
-  Sal: "https://www.linkedin.com/in/saleh--ibrahim/",
-  // Add more here like:
-  // GitHub: "https://github.com/salibrahim",
-  // CV: "https://example.com/mycv.pdf"
+  Sal: "https://www.linkedin.com/in/saleh--ibrahim/"
 };
 
-// Redirect and log route
+// 1. Stats page
+app.get("/stats", (req, res) => {
+  db.all(`SELECT * FROM clicks ORDER BY timestamp DESC`, (err, rows) => {
+    if (err) {
+      return res.status(500).send("Error reading database");
+    }
+
+    res.send(
+      `<h2>Total Clicks: ${rows.length}</h2>` +
+        rows
+          .map(
+            (r) =>
+              `<div>
+                <b>Time:</b> ${r.timestamp}<br>
+                <b>IP:</b> ${r.ip}<br>
+                <b>User Agent:</b> ${r.userAgent}<br>
+                <b>Target:</b> ${r.target}
+              </div><hr>`
+          )
+          .join("")
+    );
+  });
+});
+
+// 2. Slug redirect and log
 app.get("/:slug", (req, res) => {
   const slug = req.params.slug;
   const target = redirects[slug];
@@ -45,34 +66,10 @@ app.get("/:slug", (req, res) => {
       if (err) {
         console.error("Error saving click:", err.message);
       }
-    },
+    }
   );
 
   res.redirect(target);
-});
-
-// Stats page to view logged clicks
-app.get("/stats", (req, res) => {
-  db.all(`SELECT * FROM clicks ORDER BY timestamp DESC`, (err, rows) => {
-    if (err) {
-      return res.status(500).send("Error reading database");
-    }
-
-    res.send(
-      `<h2>Total Clicks: ${rows.length}</h2>` +
-        rows
-          .map(
-            (r) =>
-              `<div>
-                <b>Time:</b> ${r.timestamp}<br>
-                <b>IP:</b> ${r.ip}<br>
-                <b>User Agent:</b> ${r.userAgent}<br>
-                <b>Target:</b> ${r.target}
-              </div><hr>`,
-          )
-          .join(""),
-    );
-  });
 });
 
 app.listen(port, () => {
