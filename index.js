@@ -1,20 +1,69 @@
 const express = require("express");
-const fs = require("fs");
+const sqlite3 = require("sqlite3").verbose();
 const app = express();
-const port = process.env.PORT || 3000;
+const port = 3000;
 
-// Log each visit
-app.use((req, res, next) => {
-  const log = `${new Date().toISOString()} | ${req.ip} | ${req.headers["user-agent"]}\n`;
-  fs.appendFileSync("clicks.log", log);
-  next();
+// Create or connect to database
+const db = new sqlite3.Database("clicks.db");
+
+// Create a table if it doesn't exist
+db.run(`
+  CREATE TABLE IF NOT EXISTS clicks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT,
+    ip TEXT,
+    userAgent TEXT,
+    target TEXT
+  )
+`);
+
+app.get("/", (req, res) => {
+  const username = req.query.username;
+  const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
+  const userAgent = req.headers["user-agent"];
+  const timestamp = new Date().toISOString();
+
+  if (username) {
+    // Save click data
+    db.run(
+      `INSERT INTO clicks (timestamp, ip, userAgent, target) VALUES (?, ?, ?, ?)`,
+      [timestamp, ip, userAgent, username],
+      (err) => {
+        if (err) {
+          console.error("Error saving click:", err.message);
+        }
+      },
+    );
+
+    return res.redirect(username);
+  }
+
+  res.send("Please provide a username query.");
 });
 
-// Redirect route
-app.get("/", (req, res) => {
-  res.redirect("https://www.linkedin.com/in/saleh--ibrahim/");
+app.get("/stats", (req, res) => {
+  db.all(`SELECT * FROM clicks ORDER BY timestamp DESC`, (err, rows) => {
+    if (err) {
+      return res.status(500).send("Error reading database");
+    }
+
+    res.send(
+      `<h2>Total Clicks: ${rows.length}</h2>` +
+        rows
+          .map(
+            (r) =>
+              `<div>
+          <b>Time:</b> ${r.timestamp}<br>
+          <b>IP:</b> ${r.ip}<br>
+          <b>User Agent:</b> ${r.userAgent}<br>
+          <b>Target:</b> ${r.target}
+        </div><hr>`,
+          )
+          .join(""),
+    );
+  });
 });
 
 app.listen(port, () => {
-  console.log(`Live at http://localhost:${port}`);
+  console.log(`App listening on port ${port}`);
 });
